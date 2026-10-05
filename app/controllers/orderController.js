@@ -1,21 +1,20 @@
-import Order from "../models/order.js"
+import Order from "../models/orders.js"
+import User from "../models/users.js"
+import Product from "../models/products.js"
 
 // Handler functions:
 
 export const createOrder = async (req, res) => {
     const user_id = req.user.user_id;
-    const customer_name = req.user.name;
+    const user = await User.findByPk(user_id);
 
-    const { product_id, product_name, amount, status } = req.body;
+    const { product_id } = req.body;
 
     try {
         const order = await Order.create({
-            customer_name,
-            product_id,
-            product_name,
-            amount,
-            status: status || "PENDING",
             user_id,
+            product_id,
+            shipping_address : user.address,
         });
 
         res.status(201).json({
@@ -30,50 +29,67 @@ export const createOrder = async (req, res) => {
 
 
 export const getOrders = async (req, res) => {
+    const user_id = req.user.user_id;
+    const user = await User.findByPk(user_id);
+
     try {
         const orders = await Order.findAll({
-            where : {user_id : user.user_id}
+            attributes : ["order_id", "shipping_address", "status",  "created_at"],
+            where : {user_id},
+            include : {
+                model: Product,
+                attributes: ["name", "description"]
+            }
         });
+        
+        //Formatting the order details:
+        const order_details = orders.map(order => ({
+            order_id: order.order_id,
+            product_name: order.Product.name,
+            product_description: order.Product.description,
+            shipping_address: order.shipping_address,
+            order_date: order.created_at,
+            status: order.status
+        }));
 
         res.status(200).json({
             message: "Orders fetched successfully",
-            orders,
+            user_name: user.name,
+            order_details,
         });
 
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Database error" });
     }
-}
+};
 
 
-export const updateOrderStatus = async (req, res) => {
+export const confirmOrder = async (req, res) => {
     try {
-        const order_id = parseInt(req.params.id);
-        const { status } = req.body;
-
-        if (!status) {
-            return res.status(400).json({
-                message: "Status is required",
-            });
-        }
-
+        const { order_id } = req.body;
+        
         const order = await Order.findByPk(order_id);
 
         if (!order) {
             return res.status(404).json({
-                message: "Order not found",
+                message: "Order not found!!",
             });
         }
 
-        order.status = status;
-        order.updated_at = new Date();
+        const product = await Product.findByPk(order.product_id);
 
-        await order.save();
+        if(product.stock>0){
+            order.status = "CONFIRMED";
+            await order.save();
+            product.stock -= 1;
+            await product.save();
+        } else {
+            return res.status(404).json({ message: "Out of Stock!!" });
+        }
 
         res.status(200).json({
-            message: "Order status updated successfully",
-            order,
+            message: "Order confirmed!!"
         });
 
     } catch (error) {
@@ -84,29 +100,34 @@ export const updateOrderStatus = async (req, res) => {
     }
 };
 
+export const cancelOrder = async (req, res) => {
+    const {order_id} = req.body;
+
+    const order = await Order.findByPk(order_id);
+    if(!order){
+        return res.status(404).json({message: "Order not found!!"});
+    }
+
+    order.status = "CANCELLED"
+    await order.save();
+
+    res.status(200).json({message: "Order cancelled!!"});
+};
+
+
 export const deleteOrder = async (req, res) => {
     try {
-        const order_id = parseInt(req.params.id);
-
-        if (isNaN(order_id)) {
-            return res.status(400).json({
-                message: "Invalid order id",
-            });
-        }
+        const {order_id} = req.body;
 
         const order = await Order.findByPk(order_id);
-
-        if (!order) {
-            return res.status(404).json({
-                message: "Order not found",
-            });
+        if(!order){
+            return res.status(404).json({message: "Order not found!!"});
         }
 
-        await order.destroy();
+        order.row_status = "INACTIVE"
+        await order.save();
 
-        res.status(200).json({
-            message: "Order deleted successfully",
-        });
+        res.status(200).json({message: "Order deleted!!"});
 
     } catch (error) {
         console.error(error);

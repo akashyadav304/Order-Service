@@ -3,19 +3,22 @@ import express from "express";
 import {
     createOrder,
     getOrders,
-    updateOrderStatus,
-    deleteOrder,
+    confirmOrder,
+    cancelOrder,
+    deleteOrder
 } from "../controllers/orderController.js";
 import { authenticate } from "../middleware/auth.js";
 
 
 const router = express.Router();
 
+router.patch("/confirmOrder", confirmOrder);
+
 router.use(authenticate);
 
-router.post("/create", createOrder);
+router.post("/createOrder", createOrder);
 router.get("/", getOrders);
-router.patch("/:id/status", updateOrderStatus);
-router.delete("/:id/delete", deleteOrder);
+router.patch("/cancelOrder", cancelOrder);
+router.patch("/deleteOrder", deleteOrder);
 
 export default router;
